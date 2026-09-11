@@ -145,19 +145,6 @@ def check_now():
     )
 
 
-@app.route("/debug-db")
-def debug_db():
-    database_url = os.environ.get("DATABASE_URL") or ""
-    return jsonify(
-        {
-            "is_postgres": db.IS_POSTGRES,
-            "database_url_present": bool(database_url),
-            "database_url_prefix": database_url[:15],
-            "article_count": len(db.query_articles()),
-        }
-    )
-
-
 @app.route("/export")
 def export_excel():
     filters = get_filters()
