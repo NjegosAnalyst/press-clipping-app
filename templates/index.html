@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Press Clipping — Analitička platforma</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">PC</span>
+        <div class="brand-text">
+          <span class="brand-name">Press Clipping</span>
+          <span class="brand-sub">Media Intelligence</span>
+        </div>
+      </div>
+
+      <nav class="topbar-nav">
+        <a href="{{ url_for('index') }}" class="topbar-nav-link active">Pregled</a>
+        <a href="{{ url_for('trends') }}" class="topbar-nav-link">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"></polyline><polyline points="14 7 21 7 21 14"></polyline></svg>
+          Trendovi
+        </a>
+      </nav>
+
+      <div class="topbar-metric">
+        <span class="topbar-metric-value">{{ total_all }}</span>
+        <span class="topbar-metric-label">članaka u bazi</span>
+      </div>
+
+      <div class="topbar-actions">
+        <span id="check-status" class="check-status"></span>
+        <button id="check-now-btn" class="btn btn-accent" type="button">
+          <svg class="icon-refresh" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          Provjeri sada
+        </button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <form class="filters" method="get" action="{{ url_for('index') }}">
+          <div class="sidebar-section-title">Filteri</div>
+
+          <div class="filter-field">
+            <label for="source">Izvor</label>
+            <select name="source" id="source">
+              <option value="">Svi izvori</option>
+              <option value="{{ YOUTUBE_SOURCE_FILTER }}" {% if filters.source == YOUTUBE_SOURCE_FILTER %}selected{% endif %}>▶ Samo YouTube</option>
+              {% for s in sources %}
+                <option value="{{ s }}" {% if filters.source == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="filter-field">
+            <label for="keyword">Ključna riječ</label>
+            <select name="keyword" id="keyword">
+              <option value="">Sve ključne riječi</option>
+              {% for k in keywords %}
+                <option value="{{ k }}" {% if filters.keyword == k %}selected{% endif %}>{{ k }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="filter-field">
+            <label for="sentiment">Sentiment</label>
+            <select name="sentiment" id="sentiment">
+              <option value="" {% if not filters.sentiment %}selected{% endif %}>Sve</option>
+              <option value="positive" {% if filters.sentiment == 'positive' %}selected{% endif %}>Pozitivno</option>
+              <option value="neutral" {% if filters.sentiment == 'neutral' %}selected{% endif %}>Neutralno</option>
+              <option value="negative" {% if filters.sentiment == 'negative' %}selected{% endif %}>Negativno</option>
+            </select>
+          </div>
+
+          <div class="filter-field">
+            <label for="date_from">Od datuma</label>
+            <input type="date" name="date_from" id="date_from" value="{{ filters.date_from }}">
+          </div>
+
+          <div class="filter-field">
+            <label for="date_to">Do datuma</label>
+            <input type="date" name="date_to" id="date_to" value="{{ filters.date_to }}">
+          </div>
+
+          <div class="filter-actions">
+            <button type="submit" class="btn btn-filter">Primijeni filtere</button>
+            <a href="{{ url_for('index') }}" class="btn btn-clear">Poništi filtere</a>
+          </div>
+
+          <a id="export-link"
+             href="{{ url_for('export_excel', source=filters.source, keyword=filters.keyword, date_from=filters.date_from, date_to=filters.date_to, sentiment=filters.sentiment, content_type=filters.content_type) }}"
+             class="btn btn-export">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Izvezi u Excel
+          </a>
+        </form>
+
+        {% if filters.source or filters.keyword or filters.date_from or filters.date_to or filters.sentiment or filters.content_type %}
+        <div class="active-filters">
+          <div class="sidebar-section-title">Aktivno</div>
+          <div class="pill-row">
+            {% if filters.source == YOUTUBE_SOURCE_FILTER %}<span class="pill">▶ Samo YouTube</span>
+            {% elif filters.source %}<span class="pill">{{ filters.source }}</span>{% endif %}
+            {% if filters.keyword %}<span class="pill">{{ filters.keyword }}</span>{% endif %}
+            {% if filters.sentiment %}<span class="pill">{{ sentiment_label(filters.sentiment) }}</span>{% endif %}
+            {% if filters.content_type == 'news' %}<span class="pill">📰 Vijesti</span>{% elif filters.content_type == 'youtube' %}<span class="pill">▶ YouTube</span>{% endif %}
+            {% if filters.date_from %}<span class="pill">od {{ filters.date_from }}</span>{% endif %}
+            {% if filters.date_to %}<span class="pill">do {{ filters.date_to }}</span>{% endif %}
+          </div>
+        </div>
+        {% endif %}
+      </aside>
+
+      <main>
+        <div class="stat-cards">
+          <a href="{{ url_for('index') }}" class="stat-card stat-card-link" title="Prikaži sve članke">
+            <span class="stat-label">Ukupno članaka</span>
+            <span class="stat-value">{{ total_all }}</span>
+            <span class="stat-foot">u cijeloj bazi</span>
+          </a>
+          <a href="{{ url_for('index', date_from=today, date_to=today) }}" class="stat-card stat-card-accent stat-card-link" title="Prikaži članke objavljene danas">
+            <span class="stat-label">Članaka danas</span>
+            <span class="stat-value">{{ articles_today }}</span>
+            <span class="stat-foot">objavljeno danas</span>
+          </a>
+          {% if top_source_count > 0 %}
+          <a href="{{ url_for('index', source=top_source) }}" class="stat-card stat-card-link" title="Prikaži članke iz izvora {{ top_source }}">
+            <span class="stat-label">Najaktivniji izvor</span>
+            <span class="stat-value stat-value-text">{{ top_source }}</span>
+            <span class="stat-foot">{{ top_source_count }} članaka</span>
+          </a>
+          {% else %}
+          <div class="stat-card">
+            <span class="stat-label">Najaktivniji izvor</span>
+            <span class="stat-value stat-value-text">{{ top_source }}</span>
+            <span class="stat-foot">{{ top_source_count }} članaka</span>
+          </div>
+          {% endif %}
+          <div class="stat-card">
+            <span class="stat-label">Rezultati filtera</span>
+            <span class="stat-value">{{ total }}</span>
+            <span class="stat-foot">prikazano ispod</span>
+          </div>
+        </div>
+
+        <div class="content-type-tabs">
+          <a href="{{ url_for('index', source=filters.source, keyword=filters.keyword, date_from=filters.date_from, date_to=filters.date_to, sentiment=filters.sentiment, content_type='') }}"
+             class="content-type-tab {% if not filters.content_type %}active{% endif %}">Sve</a>
+          <a href="{{ url_for('index', source=filters.source, keyword=filters.keyword, date_from=filters.date_from, date_to=filters.date_to, sentiment=filters.sentiment, content_type='news') }}"
+             class="content-type-tab {% if filters.content_type == 'news' %}active{% endif %}">📰 Vijesti</a>
+          <a href="{{ url_for('index', source=filters.source, keyword=filters.keyword, date_from=filters.date_from, date_to=filters.date_to, sentiment=filters.sentiment, content_type='youtube') }}"
+             class="content-type-tab {% if filters.content_type == 'youtube' %}active{% endif %}">▶ YouTube</a>
+        </div>
+
+        <div class="results-header">
+          <h2>Praćeni članci</h2>
+          <span class="last-check">Posljednja provjera feedova: <strong>{{ last_check or "još nije izvršena" }}</strong></span>
+        </div>
+
+        {% if articles %}
+        <div class="article-grid">
+          {% for a in articles %}
+          <article class="article-card">
+            <div class="article-card-top">
+              <span class="source-badge">{{ a['source'] }}</span>
+              <span class="badge-group">
+                <span class="sentiment-badge sentiment-badge-{{ a['sentiment'] or 'neutral' }}">{{ sentiment_label(a['sentiment']) }}</span>
+                {% if a['channel'] == 'youtube' %}
+                <span class="channel-badge channel-badge-youtube">
+                  <svg viewBox="0 0 24 17" width="14" height="10" aria-hidden="true">
+                    <rect x="0" y="0" width="24" height="17" rx="4" fill="#FF0000"></rect>
+                    <polygon points="9.5,4.5 17,8.5 9.5,12.5" fill="#FFFFFF"></polygon>
+                  </svg>
+                  YouTube
+                </span>
+                {% else %}
+                <span class="channel-badge channel-badge-{{ a['channel'] }}">{{ channel_label(a['channel']) }}</span>
+                {% endif %}
+              </span>
+            </div>
+            <h3 class="article-title">
+              <a href="{{ a['link'] }}" target="_blank" rel="noopener noreferrer">{{ a['title'] }}</a>
+            </h3>
+            <p class="article-snippet">{{ a['snippet'] }}</p>
+            <div class="article-card-bottom">
+              <span class="article-date">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                {{ a['published_date'] or "nepoznat datum" }}
+              </span>
+              <span class="keyword-badge">{{ a['keyword'] }}</span>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-icon">📰</div>
+          <p>Nema sačuvanih članaka za izabrane filtere.</p>
+          <p class="empty-state-hint">Pritisnite "Provjeri sada" da odmah pokrenete pretragu feedova.</p>
+        </div>
+        {% endif %}
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const btn = document.getElementById("check-now-btn");
+    const status = document.getElementById("check-status");
+
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = "⏳ Provjera u toku...";
+      status.textContent = "";
+
+      try {
+        const res = await fetch("{{ url_for('check_now') }}", { method: "POST" });
+        const data = await res.json();
+        status.textContent = `Pronađeno novih članaka: ${data.new_articles}`;
+        window.location.reload();
+      } catch (err) {
+        status.textContent = "Greška prilikom provjere feedova.";
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
+    });
+  </script>
+</body>
+</html>

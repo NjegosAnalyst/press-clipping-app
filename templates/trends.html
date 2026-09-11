@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Press Clipping — Trendovi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">PC</span>
+        <div class="brand-text">
+          <span class="brand-name">Press Clipping</span>
+          <span class="brand-sub">Media Intelligence</span>
+        </div>
+      </div>
+
+      <nav class="topbar-nav">
+        <a href="{{ url_for('index') }}" class="topbar-nav-link">Pregled</a>
+        <a href="{{ url_for('trends') }}" class="topbar-nav-link active">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"></polyline><polyline points="14 7 21 7 21 14"></polyline></svg>
+          Trendovi
+        </a>
+      </nav>
+
+      <div class="topbar-metric">
+        <span class="topbar-metric-value">{{ total_all }}</span>
+        <span class="topbar-metric-label">članaka u bazi</span>
+      </div>
+    </header>
+
+    <div class="layout layout-full">
+      <main>
+        <div class="results-header">
+          <h2>Trendovi i statistika</h2>
+          <span class="last-check">Posljednja provjera feedova: <strong>{{ last_check or "još nije izvršena" }}</strong></span>
+        </div>
+
+        <div id="trends-empty" class="empty-state" hidden>
+          <div class="empty-state-icon">📊</div>
+          <p>Nema dovoljno podataka za prikaz grafikona.</p>
+          <p class="empty-state-hint">Pritisnite "Provjeri sada" na Pregledu da prikupite članke.</p>
+        </div>
+
+        <div id="trends-content" class="chart-grid">
+          <div class="chart-card chart-card-full">
+            <div class="chart-card-title">Broj članaka po danu (posljednjih 30 dana)</div>
+            <div class="chart-canvas-wrap chart-canvas-wrap-wide">
+              <canvas id="chart-by-day"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-title">Top 10 izvora</div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chart-top-sources"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-title">Raspodjela sentimenta</div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chart-sentiment"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-title">Članci po kanalu</div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chart-channel"></canvas>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const CSS_VARS = getComputedStyle(document.documentElement);
+    const cssVar = (name) => CSS_VARS.getPropertyValue(name).trim();
+
+    const COLOR_TEXT_MUTED = cssVar("--text-muted") || "#8b98a8";
+    const COLOR_BORDER = cssVar("--border") || "#232d38";
+    const COLOR_BORDER_SOFT = cssVar("--border-soft") || "#1a222c";
+    const COLOR_ACCENT = cssVar("--accent") || "#ff9f43";
+    const COLOR_ACCENT_SOFT = "rgba(255, 159, 67, 0.18)";
+    const COLOR_BLUE = cssVar("--blue-accent") || "#4fa8ff";
+    const COLOR_BLUE_SOFT = "rgba(79, 168, 255, 0.18)";
+    const COLOR_GOOD = cssVar("--good") || "#34d399";
+    const COLOR_NEGATIVE = "#f87171";
+    const COLOR_NEUTRAL = cssVar("--text-faint") || "#5c6a7b";
+    const COLOR_YOUTUBE = "#ff0000";
+
+    Chart.defaults.color = COLOR_TEXT_MUTED;
+    Chart.defaults.borderColor = COLOR_BORDER;
+    Chart.defaults.font.family = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif";
+
+    const CHANNEL_LABELS = { google_news: "Google News", rss: "Direktni RSS", youtube: "YouTube" };
+    const CHANNEL_COLORS = { google_news: COLOR_ACCENT, rss: COLOR_BLUE, youtube: COLOR_YOUTUBE };
+
+    function formatDayLabel(isoDay) {
+      const [, month, day] = isoDay.split("-");
+      return `${day}.${month}.`;
+    }
+
+    async function loadTrends() {
+      let data;
+      try {
+        const res = await fetch("{{ url_for('api_trends') }}");
+        data = await res.json();
+      } catch (err) {
+        document.getElementById("trends-content").hidden = true;
+        document.getElementById("trends-empty").hidden = false;
+        return;
+      }
+
+      const totalArticles = data.by_channel
+        ? Object.values(data.by_channel).reduce((a, b) => a + b, 0)
+        : 0;
+
+      if (!totalArticles) {
+        document.getElementById("trends-content").hidden = true;
+        document.getElementById("trends-empty").hidden = false;
+        return;
+      }
+
+      // ---- Linijski grafikon: članci po danu ----
+      new Chart(document.getElementById("chart-by-day"), {
+        type: "line",
+        data: {
+          labels: data.by_day.map((d) => formatDayLabel(d.day)),
+          datasets: [
+            {
+              label: "Članaka",
+              data: data.by_day.map((d) => d.count),
+              borderColor: COLOR_ACCENT,
+              backgroundColor: COLOR_ACCENT_SOFT,
+              fill: true,
+              tension: 0.35,
+              pointRadius: 2,
+              pointHoverRadius: 5,
+              borderWidth: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: COLOR_BORDER_SOFT }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+            y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: COLOR_BORDER_SOFT } },
+          },
+        },
+      });
+
+      // ---- Bar grafikon: top 10 izvora ----
+      new Chart(document.getElementById("chart-top-sources"), {
+        type: "bar",
+        data: {
+          labels: data.top_sources.map((s) => s.source),
+          datasets: [
+            {
+              label: "Članaka",
+              data: data.top_sources.map((s) => s.count),
+              backgroundColor: COLOR_BLUE_SOFT,
+              borderColor: COLOR_BLUE,
+              borderWidth: 1.5,
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: COLOR_BORDER_SOFT } },
+            y: { grid: { display: false } },
+          },
+        },
+      });
+
+      // ---- Donut grafikon: sentiment ----
+      new Chart(document.getElementById("chart-sentiment"), {
+        type: "doughnut",
+        data: {
+          labels: ["Pozitivno", "Neutralno", "Negativno"],
+          datasets: [
+            {
+              data: [data.sentiment.positive, data.sentiment.neutral, data.sentiment.negative],
+              backgroundColor: [COLOR_GOOD, COLOR_NEUTRAL, COLOR_NEGATIVE],
+              borderColor: cssVar("--surface") || "#141b24",
+              borderWidth: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: "62%",
+          plugins: { legend: { position: "bottom", labels: { boxWidth: 12, padding: 14 } } },
+        },
+      });
+
+      // ---- Donut grafikon: kanali ----
+      const channelKeys = Object.keys(data.by_channel);
+      new Chart(document.getElementById("chart-channel"), {
+        type: "doughnut",
+        data: {
+          labels: channelKeys.map((k) => CHANNEL_LABELS[k] || k),
+          datasets: [
+            {
+              data: channelKeys.map((k) => data.by_channel[k]),
+              backgroundColor: channelKeys.map((k) => CHANNEL_COLORS[k] || COLOR_TEXT_MUTED),
+              borderColor: cssVar("--surface") || "#141b24",
+              borderWidth: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: "62%",
+          plugins: { legend: { position: "bottom", labels: { boxWidth: 12, padding: 14 } } },
+        },
+      });
+    }
+
+    loadTrends();
+  </script>
+</body>
+</html>
